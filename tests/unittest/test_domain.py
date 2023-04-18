@@ -25,12 +25,12 @@ class TestDomain(TestCase):
                 "HOME": home_var,
                 "SNAP": snap_var,
                 "SNAP_USER_DATA": snap_user_data_dir,
-                "SNAP_SPARK_ENV_CONF": snap_spark_env_conf_file,
+                "SPARK_CLIENT_ENV_CONF": snap_spark_env_conf_file,
                 "SNAP_REAL_HOME": snap_real_home,
                 "KUBECONFIG": kubeconfig,
             }
         )
-        self.assertEqual(defaults.snap_folder, snap_var)
+        self.assertEqual(defaults.spark_folder, snap_var)
         self.assertEqual(
             defaults.static_conf_file, f"{snap_var}/conf/spark-defaults.conf"
         )
@@ -88,6 +88,16 @@ class TestDomain(TestCase):
         self.assertEqual(
             sa.configurations.props.get("spark.dummy.property2"), spark_dummy_property2
         )
+
+    def test_property_file_parsing_from_confs(self):
+        confs = ["key1=value1", "key2=value2"]
+
+        prop = PropertyFile(
+            dict(PropertyFile.parse_property_line(line) for line in confs)
+        )
+
+        self.assertEqual(len(prop.props), 2)
+        self.assertEqual(prop.props, {"key1": "value1", "key2": "value2"})
 
     def test_property_file_parse_options(self):
         """

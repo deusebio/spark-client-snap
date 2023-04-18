@@ -1,6 +1,6 @@
 name: spark-client
 base: core22
-version: '3.3.1'
+version: '3.3.2'
 summary: Client side scripts to submit Spark jobs to a cluster.
 description: |
   The spark-client snap includes the scripts spark-submit, spark-shell, pyspark and other tools for managing Apache Spark jobs.
@@ -20,27 +20,27 @@ environment:
 
 apps:
   service-account-registry:
-    command: ops/cli/service-account-registry.py
+    command: ops/cli/service_account_registry.py
     environment:
-      PYTHONPATH: $PYTHONPATH:$SNAP/usr/lib/python3/dist-packages:$SNAP/python
+      PYTHONPATH: $PYTHONPATH:$SNAP/lib/python3.10/site-packages:$SNAP/usr/lib/python3/dist-packages:$SNAP/python
       OPS_ROOT: ${SNAP}/ops
     plugs:
         - network
         - home
         - dot-kube-config
-  submit:
-    command: ops/cli/spark-submit.py
+  spark-submit:
+    command: ops/cli/spark_submit.py
     environment:
-      PYTHONPATH: $PYTHONPATH:$SNAP/usr/lib/python3/dist-packages:$SNAP/python
+      PYTHONPATH: $PYTHONPATH:$SNAP/lib/python3.10/site-packages:$SNAP/usr/lib/python3/dist-packages:$SNAP/python
       OPS_ROOT: ${SNAP}/ops
     plugs:
         - network
         - home
         - dot-kube-config
-  shell:
-    command: ops/cli/spark-shell.py
+  spark-shell:
+    command: ops/cli/spark_shell.py
     environment:
-      PYTHONPATH: $PYTHONPATH:$SNAP/usr/lib/python3/dist-packages:$SNAP/python
+      PYTHONPATH: $PYTHONPATH:$SNAP/lib/python3.10/site-packages:$SNAP/usr/lib/python3/dist-packages:$SNAP/python
     plugs:
         - network
         - network-bind
@@ -49,7 +49,7 @@ apps:
   pyspark:
     command: ops/cli/pyspark.py
     environment:
-      PYTHONPATH: $PYTHONPATH:$SNAP/usr/lib/python3/dist-packages:$SNAP/python
+      PYTHONPATH: $PYTHONPATH:$SNAP/lib/python3.10/site-packages:$SNAP/usr/lib/python3/dist-packages:$SNAP/python
     plugs:
         - network
         - network-bind
@@ -120,11 +120,13 @@ parts:
     plugin: python
     python-packages:
         - pyyaml
+        - lightkube
     build-packages:
         - curl
     source: .
     source-type: local
     override-build: |
+      craftctl default
       target_dir="$CRAFT_PART_INSTALL/ops"
 
       mkdir -p "$target_dir"
@@ -139,6 +141,9 @@ parts:
 
       mkdir -p "$CRAFT_PART_INSTALL/conf"
       cp spark_client/resources/conf/* "$CRAFT_PART_INSTALL/conf/."
+      
+      mkdir -p "$CRAFT_PART_INSTALL/resources/templates"
+      cp spark_client/resources/templates/* "$CRAFT_PART_INSTALL/resources/templates/."
       
       curl -LO -s "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
       chmod +x kubectl

@@ -1,0 +1,100 @@
+name: Detect upstream Spark updates
+
+env:
+  BRANCH: main
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '00 16 * * *'
+
+jobs:
+  check-spark:
+    name: Check if Spark update is available
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      decision: ${{ steps.check-latest-spark-version.outputs.decision }}
+      version: ${{ steps.check-latest-spark-version.outputs.version }}
+    steps:
+      - id: checkout
+        name: Checkout repo
+        uses: actions/checkout@v3
+        with:
+          ref: ${{ env.BRANCH }}
+      - id: check-last-published-version
+        name: Read last published stable Spark version
+        uses: juliangruber/read-file-action@v1
+        with:
+          path: ./SPARK_VERSION
+      - id: check-latest-spark-version
+        name: Check latest stable Spark version available for download
+        run: |
+          LATEST_STABLE_SPARK_VERSION=$(curl --silent https://downloads.apache.org/spark/ | grep "spark-" | cut -d'>' -f3 | cut -d'/' -f1  | sort | tail -n 1)
+          CURRENT_PUBLISHED_VERSION=${{ steps.check-last-published-version.outputs.content }}
+          LATEST_AVAILABLE_VERSION=${LATEST_STABLE_SPARK_VERSION:6}
+          STATUSCODE=$(curl --silent --head https://downloads.apache.org/spark/${LATEST_STABLE_SPARK_VERSION}/${LATEST_STABLE_SPARK_VERSION}-bin-hadoop3.tgz | head -n 1 | cut -d' ' -f2)
+          if  [[ ${LATEST_AVAILABLE_VERSION} != ${CURRENT_PUBLISHED_VERSION} ]] && [[ ${STATUSCODE} -eq 200 ]]
+            then 
+              echo "::set-output name=decision::1"
+              echo "New Spark version available....."
+            else
+              echo "::set-output name=decision::0"
+              echo "No updates to Spark detected!"
+          fi
+          echo "::set-output name=version::${LATEST_AVAILABLE_VERSION}"
+
+  modify-snap-version:
+    name: Modify snap version to be published for reviewers reference.
+    if: needs.check-spark.outputs.decision  ==  '1'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs:
+      - check-spark
+    steps:
+      - id: checkout
+        name: Checkout repo
+        uses: actions/checkout@v3
+        with:
+          ref: ${{ env.BRANCH }}
+      - id: record_spark_latest_version
+        name: Record updated Spark version
+        run: |
+          git config user.email "abhishek.verma@canonical.com"
+          git config user.name "Abhishek Verma"
+          git checkout -b "bot/update-spark-version"
+          echo -n ${{ needs.check-spark.outputs.version }} > ./SPARK_VERSION
+          git add ./SPARK_VERSION
+          git config author.name "GitHub <noreply@github.com>"
+          git config author.email "${{ github.actor }} <${{ github.actor }}@users.noreply.github.com>"
+          git commit -m "Update Spark Snap"
+          git push --set-upstream -f origin "bot/update-spark-version"
+      - name: Check if a PR already exists
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          prs=$(gh pr list \
+              --json baseRefName,headRefName \
+              --jq '
+                  map(select(.baseRefName == "main" and .headRefName == "bot/update-spark-version"))
+                  | length
+              ')
+          if ((prs > 0)); then
+              echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+      # - name: create pull request
+      #   if: '!steps.check.outputs.skip'
+      #   id: cpr
+      #   run: gh pr create
+      #     --title "Update snap for new spark version"
+      #     --body "Update client snap with new version of Apache Spark."
+      #     --base main
+      #     --assignee deusebio
+      #     --assignee taurus-forever
+      #     --assignee averma-canonical
+      #     --reviewer deusebio
+      #     --reviewer taurus-forever
+      #     --reviewer averma-canonical
+      #     --label "automated pr"
+      #   env:
+      #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

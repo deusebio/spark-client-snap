@@ -2,7 +2,8 @@ import io
 import os
 import re
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Optional
+from enum import Enum
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from spark_client.utils import WithLogging, union
 
@@ -22,14 +23,25 @@ class PropertyFile(WithLogging):
         """Return the size of the property dictionary, i.e. the number of configuration parameters."""
         return len(self.props)
 
-    @classmethod
-    def _is_property_with_options(cls, key: str) -> bool:
+    @staticmethod
+    def _is_property_with_options(key: str) -> bool:
         """Check if a given property is known to be options-like requiring special parsing.
 
         Args:
             key: Property for which special options-like parsing decision has to be taken
         """
         return key in ["spark.driver.extraJavaOptions"]
+
+    @staticmethod
+    def parse_property_line(line: str) -> Tuple[str, str]:
+        prop_assignment = list(filter(None, re.split("=| ", line.strip())))
+        prop_key = prop_assignment[0].strip()
+        if PropertyFile._is_property_with_options(prop_key):
+            option_assignment = line.split("=", 1)
+            value = option_assignment[1].strip()
+        else:
+            value = prop_assignment[1].strip()
+        return prop_key, value
 
     @classmethod
     def _read_property_file_unsafe(cls, name: str) -> Dict:
@@ -41,14 +53,8 @@ class PropertyFile(WithLogging):
         defaults = dict()
         with open(name) as f:
             for line in f:
-                prop_assignment = list(filter(None, re.split("=| ", line.strip())))
-                prop_key = prop_assignment[0].strip()
-                if cls._is_property_with_options(prop_key):
-                    option_assignment = line.split("=", 1)
-                    value = option_assignment[1].strip()
-                else:
-                    value = prop_assignment[1].strip()
-                defaults[prop_key] = os.path.expandvars(value)
+                key, value = cls.parse_property_line(line)
+                defaults[key] = os.path.expandvars(value)
         return defaults
 
     @classmethod
@@ -143,6 +149,19 @@ class PropertyFile(WithLogging):
         }
         return PropertyFile(union(*[simple_properties, merged_options]))
 
+    def remove(self, keys_to_remove: List[str]) -> "PropertyFile":
+        """Remove keys from PropertyFile properties.
+
+        Args:
+            keys_to_remove: List of keys to be removed from properties.
+        """
+        self.props = (
+            {key: self.props[key] for key in self.props if key not in keys_to_remove}
+            if keys_to_remove
+            else self.props
+        )
+        return self
+
 
 class Defaults:
     """Class containing all relevant defaults for the application."""
@@ -157,24 +176,24 @@ class Defaults:
         self.environ = environ if environ is not None else {}
 
     @property
-    def snap_folder(self) -> str:
+    def spark_folder(self) -> str:
         """Return the SNAP folder"""
-        return self.environ["SNAP"]
+        return self.environ.get("SNAP", self.environ.get("SPARK_HOME"))
 
     @property
     def static_conf_file(self) -> str:
         """Return static config properties file packaged with the client snap."""
-        return f"{self.environ.get('SNAP')}/conf/spark-defaults.conf"
+        return f"{self.spark_folder}/conf/spark-defaults.conf"
 
     @property
     def dynamic_conf_file(self) -> str:
         """Return dynamic config properties file generated during client setup."""
-        return f"{self.environ.get('SNAP_USER_DATA')}/spark-defaults.conf"
+        return f"{self.environ.get('SNAP_USER_DATA', self.environ.get('HOME'))}/spark-defaults.conf"
 
     @property
     def env_conf_file(self) -> Optional[str]:
         """Return env var provided by user to point to the config properties file with conf overrides."""
-        return self.environ.get("SNAP_SPARK_ENV_CONF")
+        return self.environ.get("SPARK_CLIENT_ENV_CONF")
 
     @property
     def snap_temp_folder(self) -> str:
@@ -201,25 +220,47 @@ class Defaults:
     @property
     def kubectl_cmd(self) -> str:
         """Return default kubectl command."""
-        return (
-            f"{self.environ['SNAP']}/kubectl" if "SNAP" in self.environ else "kubectl"
-        )
+        return f"{self.spark_folder}/kubectl" if "SNAP" in self.environ else "kubectl"
 
     @property
     def scala_history_file(self):
-        return f"{self.environ['SNAP_USER_DATA']}/.scala_history"
+        return f"{self.environ.get('SNAP_USER_DATA', self.environ.get('HOME'))}/.scala_history"
 
     @property
     def spark_submit(self) -> str:
-        return f"{self.environ['SNAP']}/bin/spark-submit"
+        return f"{self.spark_folder}/bin/spark-submit"
 
     @property
     def spark_shell(self) -> str:
-        return f"{self.environ['SNAP']}/bin/spark-shell"
+        return f"{self.spark_folder}/bin/spark-shell"
 
     @property
     def pyspark(self) -> str:
-        return f"{self.environ['SNAP']}/bin/pyspark"
+        return f"{self.spark_folder}/bin/pyspark"
+
+    @property
+    def dir_package(self) -> str:
+        return (
+            f"{self.environ.get('SNAP')}"
+            if "SNAP" in self.environ
+            else f"{self.environ.get('HOME')}/python/dist/spark_client"
+        )
+
+    @property
+    def template_dir(self) -> str:
+        return f"{self.dir_package}/resources/templates"
+
+    @property
+    def template_serviceaccount(self) -> str:
+        return f"{self.template_dir}/serviceaccount_yaml.tmpl"
+
+    @property
+    def template_role(self) -> str:
+        return f"{self.template_dir}/role_yaml.tmpl"
+
+    @property
+    def template_rolebinding(self) -> str:
+        return f"{self.template_dir}/rolebinding_yaml.tmpl"
 
 
 @dataclass
@@ -250,3 +291,11 @@ class ServiceAccount:
     def configurations(self) -> PropertyFile:
         """Return the service account configuration, associated to a given spark service account."""
         return self.extra_confs + self._k8s_configurations
+
+
+class KubernetesResourceType(str, Enum):
+    SERVICEACCOUNT = "serviceaccount"
+    ROLE = "role"
+    ROLEBINDING = "rolebinding"
+    SECRET = "secret"
+    SECRET_GENERIC = "secret generic"

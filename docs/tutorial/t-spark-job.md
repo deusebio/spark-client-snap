@@ -1,9 +1,10 @@
-### Spark Job Submission To Kubernetes Cluster
-The spark-client snaps ships with the Apache Spark's spark-submit utility for Kubernetes distribution.
+## Spark Job Submission To Kubernetes Cluster
+The spark-client snap ships with the Apache Spark's spark-submit utility for Kubernetes distribution.
 
-To submit Spark jobs to a Kubernetes cluster using the spark-submit utility, please first follow the [setup](/docs/setup.md) instructions to create the Kubernetes service account.
+To submit Spark jobs to a Kubernetes cluster using the spark-submit utility, first follow the 
+[setup](https://discourse.charmhub.io/t/spark-client-snap-tutorial-setup-environment/8952) instructions to create the Kubernetes service account.
 
-#### Validating Setup with an Example Spark Job
+### Validating Setup with an Example Spark Job
 
 Once you have set up the service account successfully, please execute the following commands to test the validity of your setup.
 
@@ -12,13 +13,18 @@ Here we are launching the Pi example bundled with Apache Spark.
 ```bash
 SPARK_EXAMPLES_JAR_NAME='spark-examples_2.12-3.4.0-SNAPSHOT.jar'
         
-spark-client.submit \
+spark-client.spark-submit \
 --deploy-mode cluster \
 --class org.apache.spark.examples.SparkPi \
 local:///opt/spark/examples/jars/$SPARK_EXAMPLES_JAR_NAME 100
 ```
 
-#### Adding Big Data to the mix
+> **Note** When running locally or on CI/CD pipelines, in case executor pods fail to schedule due to insufficient CPU resources, make 
+[fractional](https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/#resource-units-in-kubernetes) CPU requests.
+
+
+
+### Adding Big Data to the mix
 
 Once the setup is validated, it's time to test out with a real big data workload. Here we assume that 
 * the input data is placed in S3
@@ -56,7 +62,7 @@ $S3_PATH_FOR_CODE_PY_FILE
 These configuration parameters and others can be provided via a ```spark-defaults.conf``` config file placed as described here.
 * Either setting ***SPARK_HOME*** and placing the config as ```$SPARK_HOME/conf/spark-defaults.conf```. Or
 * Overriding ***SPARK_CONF_DIR*** and placing the config as ```$SPARK_CONF_DIR/spark-defaults.conf``` Or
-* Overriding ***SNAP_SPARK_ENV_CONF*** to point to the config file to use
+* Overriding ***SPARK_CLIENT_ENV_CONF*** to point to the config file to use
 
 For example, with a ```spark-defaults.conf``` similar to provided below for reference, we can make the submit command much simpler.
 

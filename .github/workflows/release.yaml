@@ -1,0 +1,33 @@
+name: Release to latest/edge
+
+env:
+  RELEASE: edge
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    uses: ./.github/workflows/ci.yaml
+
+  publish:
+    name: Publish Snap
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs:
+      - build
+    steps:
+      - name: Download built snap file
+        uses: actions/download-artifact@v3
+        with:
+          name: ${{ needs.build.outputs.snap-file }}
+          path: .
+      - name: Publish built snap to Store
+        uses: snapcore/action-publish@v1
+        env:
+          SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.STORE_LOGIN }}
+        with:
+          snap: ${{ needs.build.outputs.snap-file }}
+          release: ${{ env.RELEASE }}
