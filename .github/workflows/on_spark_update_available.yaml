@@ -82,19 +82,19 @@ jobs:
           if ((prs > 0)); then
               echo "skip=true" >> "$GITHUB_OUTPUT"
           fi
-      # - name: create pull request
-      #   if: '!steps.check.outputs.skip'
-      #   id: cpr
-      #   run: gh pr create
-      #     --title "Update snap for new spark version"
-      #     --body "Update client snap with new version of Apache Spark."
-      #     --base main
-      #     --assignee deusebio
-      #     --assignee taurus-forever
-      #     --assignee averma-canonical
-      #     --reviewer deusebio
-      #     --reviewer taurus-forever
-      #     --reviewer averma-canonical
-      #     --label "automated pr"
-      #   env:
-      #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: create pull request
+        if: '!steps.check.outputs.skip'
+        id: cpr
+        run: gh pr create
+          --title "Update snap for new spark version"
+          --body "Update client snap with new version of Apache Spark."
+          --base main
+          --assignee deusebio
+          --assignee taurus-forever
+          --assignee averma-canonical
+          --reviewer deusebio
+          --reviewer taurus-forever
+          --reviewer averma-canonical
+          --label "automated pr"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
